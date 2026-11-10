@@ -1,0 +1,8 @@
+# Media files (optional - comment out if you want to push the video)
+*.mp4
+*.png
+*.jpg
+
+# OS files
+Thumbs.db
+.DS_Store

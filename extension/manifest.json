@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Meridian Asset Assistant",
+  "version": "1.0.0",
+  "description": "Automate Fixed Asset creation in MyClassboard ERP based on Lakshmi ma'am's workflow.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://meridian.myclassboard.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Meridian Asset Assistant"
+  }
+}

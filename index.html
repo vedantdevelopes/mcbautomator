@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meridian Fixed Asset Automation Suite</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap"
+    rel="stylesheet">
+</head>
+
+<body>
+
+  <!-- Top Announcement Bar -->
+  <header class="top-nav">
+    <div class="nav-container">
+      <div class="logo-area">
+        <span class="logo-badge">🏫</span>
+        <div class="logo-text">
+          <h1>Meridian Asset Automator</h1>
+          <p>MyClassboard Fixed Assets Suite &bull; Meridian School, Madhapur</p>
+        </div>
+      </div>
+      <div class="nav-tags">
+        <span class="badge badge-success">● 100% In-Browser</span>
+        <span class="badge badge-primary">No Python Required</span>
+        <span class="badge badge-accent">GitHub Pages Ready</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+
+    <!-- Hero / Workflow intro -->
+    <section class="hero-card">
+      <div class="hero-content">
+        <h2>Automate Fixed Asset Entry in MyClassboard ERP</h2>
+        <p>
+          Derived directly from <strong>Lakshmi ma'am's workflow</strong>. Automatically formats naming conventions,
+          auto-detects the last asset number from the inventory table, and populates student tables, chairs, and custom
+          items without manual repetitive typing.
+        </p>
+      </div>
+
+      <div class="quick-launcher-banner">
+        <div class="launcher-info">
+          <h3>⚡ 1-Click Browser Launcher</h3>
+          <p>Drag this button to your browser bookmarks bar. Open MyClassboard & click it!</p>
+        </div>
+        <div class="launcher-action">
+          <a id="bookmarklet-link" href="#" class="btn-bookmarklet" title="Drag to Bookmarks Bar">
+            🚀 MCB Auto Asset (Drag Me)
+          </a>
+          <button id="copy-script-btn" class="btn-secondary">📋 Copy Console Script</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Generator & Config Grid -->
+    <div class="grid-2col">
+
+      <!-- Left Column: Generator Form -->
+      <section class="card">
+        <div class="card-header">
+          <span class="card-icon">⚙️</span>
+          <h3>1. Asset Configuration & Range</h3>
+        </div>
+
+        <form id="asset-form" class="form-body" onsubmit="event.preventDefault();">
+
+          <div class="form-row">
+            <div class="form-group col-6">
+              <label for="input-grade">Grade / Class</label>
+              <input type="text" id="input-grade" value="3" placeholder="e.g. 3, 4, NUR, PP1" required>
+              <small class="field-hint">e.g. <strong>3</strong> for Class 3</small>
+            </div>
+            <div class="form-group col-6">
+              <label for="input-section">Section</label>
+              <input type="text" id="input-section" value="D" placeholder="e.g. D, C, B, A" required>
+              <small class="field-hint">e.g. <strong>d</strong> for Section D</small>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="select-item-type">Item Category & Type</label>
+            <select id="select-item-type">
+              <option value="ST" data-cat="FURNITURES" data-mcb="STUDENT TABLES" selected>Student Tables (ST) &bull;
+                FURNITURES</option>
+              <option value="SC" data-cat="FURNITURES" data-mcb="STUDENT CHAIRS">Student Chairs (SC) &bull; FURNITURES
+              </option>
+              <option value="EC" data-cat="FURNITURES" data-mcb="EXECUTIVE CHAIRS">Executive Chairs (EC) &bull;
+                FURNITURES</option>
+              <option value="ET" data-cat="FURNITURES" data-mcb="EXECUTIVE TABLES">Executive Tables (ET) &bull;
+                FURNITURES</option>
+              <option value="VC" data-cat="FURNITURES" data-mcb="VISITOR CHAIRS">Visitor Chairs (VC) &bull; FURNITURES
+              </option>
+              <option value="BD" data-cat="FURNITURES" data-mcb="BOARDS">Green/White Boards (BD) &bull; FURNITURES
+              </option>
+              <option value="TT" data-cat="FURNITURES" data-mcb="TEACHER TABLES">Teacher Tables (TT) &bull; FURNITURES
+              </option>
+              <option value="CP" data-cat="FURNITURES" data-mcb="CUPBOARDS">Cupboard / Storage (CP) &bull; FURNITURES
+              </option>
+              <option value="CUSTOM" data-cat="FURNITURES" data-mcb="CUSTOM">Custom Item Type...</option>
+            </select>
+          </div>
+
+          <!-- Custom Type Fields (conditional) -->
+          <div id="custom-type-container" class="form-row" style="display:none;">
+            <div class="form-group col-6">
+              <label for="custom-type-code">Custom Code</label>
+              <input type="text" id="custom-type-code" placeholder="e.g. PB (Pin Board)">
+            </div>
+            <div class="form-group col-6">
+              <label for="custom-type-mcb">MCB Dropdown Name</label>
+              <input type="text" id="custom-type-mcb" placeholder="e.g. PIN BOARDS">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group col-6">
+              <label for="input-start-unit">Start Unit in Room</label>
+              <input type="number" id="input-start-unit" value="6" min="1" required>
+              <small class="field-hint">e.g. <strong>6</strong> &rarr; 3d-06</small>
+            </div>
+            <div class="form-group col-6">
+              <label for="input-end-unit">End Unit in Room</label>
+              <input type="number" id="input-end-unit" value="30" min="1" required>
+              <small class="field-hint">Stops at unit <strong>30</strong></small>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="input-start-global">Starting Global Serial Number</label>
+            <input type="number" id="input-start-global" value="478" min="1" required>
+            <small class="field-hint">Detected from last row in MCB table (e.g. <strong>477 + 1 = 478</strong>)</small>
+          </div>
+
+          <div class="summary-pill">
+            <span>Will generate: <strong id="total-count-badge">25 items</strong></span>
+            <span>Room Range: <code id="room-range-badge">3d-06 &rarr; 3d-30</code></span>
+            <span>Global ID Range: <code id="global-range-badge">478 &rarr; 502</code></span>
+          </div>
+
+        </form>
+      </section>
+
+      <!-- Right Column: Live Formula Breakdown & Bookmarklet -->
+      <section class="card">
+        <div class="card-header">
+          <span class="card-icon">🔍</span>
+          <h3>2. Format Verification & Naming Rules</h3>
+        </div>
+
+        <div class="rules-card">
+          <h4>Parsed Naming Convention (Lakshmi Ma'am Standard)</h4>
+          <div class="formula-breakdown">
+            <div class="formula-box">
+              <span class="formula-part part-school">MM</span>
+              <span class="formula-sep">/</span>
+              <span class="formula-part part-room" id="formula-room">3d-06</span>
+              <span class="formula-sep">/</span>
+              <span class="formula-part part-cat">FURN</span>
+              <span class="formula-sep">/</span>
+              <span class="formula-part part-type" id="formula-type">ST</span>
+              <span class="formula-sep">/</span>
+              <span class="formula-part part-id" id="formula-id">478</span>
+            </div>
+            <p class="formula-caption">
+              <strong>MM</strong> (School) &bull;
+              <strong id="caption-room">3d-06</strong> (Grade + Sec + Unit) &bull;
+              <strong>FURN</strong> (Furniture) &bull;
+              <strong id="caption-type">ST</strong> (Student Table) &bull;
+              <strong id="caption-id">478</strong> (Global Serial ID)
+            </p>
+          </div>
+
+          <div class="meta-preview-grid">
+            <div class="meta-item">
+              <span class="meta-label">Item Description:</span>
+              <code id="meta-desc">MM/3d-06/FURN/ST/478</code>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Asset Tag Name:</span>
+              <code id="meta-tag-name">MM/3d-06/FURN/ST/478</code>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Asset Tag No:</span>
+              <code id="meta-tag-no" class="tag-highlight">MM/MM-478</code>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Depreciation:</span>
+              <span>Straight Line Method @ 1%</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">UOM & Classification:</span>
+              <span>Nos &bull; General &bull; GST 0%</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Radios:</span>
+              <span>Returnable: No &bull; Warranty: No &bull; Service: No</span>
+            </div>
+          </div>
+        </div>
+
+
+      </section>
+
+    </div>
+
+    <!-- Live Preview Table & Export -->
+    <section class="card table-card">
+      <div class="card-header space-between">
+        <div class="header-left">
+          <span class="card-icon">📋</span>
+          <h3>Batch Preview (<span id="table-row-count">25</span> Items)</h3>
+        </div>
+        <div class="header-actions">
+          <button id="export-csv-btn" class="btn-secondary">📥 Export to CSV / Excel</button>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table id="preview-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Item Name</th>
+              <th>Asset Tag No</th>
+              <th>Category</th>
+              <th>Sub Category</th>
+              <th>Item Type</th>
+              <th>UOM</th>
+              <th>Classification</th>
+              <th>Depreciation</th>
+            </tr>
+          </thead>
+          <tbody id="preview-table-body">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Step-by-Step Instructions & Options -->
+    <section class="card instructions-card">
+      <div class="card-header">
+        <span class="card-icon">🚀</span>
+        <h3>How to Run Automation on MyClassboard (Zero Setup)</h3>
+      </div>
+
+      <div class="instruction-steps">
+
+        <div class="step-box">
+          <div class="step-num">1</div>
+          <div class="step-details">
+            <h4>Save the Bookmarklet</h4>
+            <p>
+              Drag the blue <strong>"🚀 MCB Auto Asset"</strong> button above into your browser's Bookmarks bar.
+              <em>(If bookmarks bar is hidden, press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> in
+                Chrome/Edge).</em>
+            </p>
+          </div>
+        </div>
+
+        <div class="step-box">
+          <div class="step-num">2</div>
+          <div class="step-details">
+            <h4>Navigate to MyClassboard</h4>
+            <p>
+              Log in to <code>meridian.myclassboard.com</code> and open:
+              <br>
+              <code>Inventory &rarr; Asset Management &rarr; Fixed Assets Management</code>
+            </p>
+          </div>
+        </div>
+
+        <div class="step-box">
+          <div class="step-num">3</div>
+          <div class="step-details">
+            <h4>Click the Bookmarklet</h4>
+            <p>
+              Click <strong>MCB Auto Asset</strong> in your bookmarks bar. A floating assistant window will appear
+              directly on top of the MyClassboard page!
+            </p>
+          </div>
+        </div>
+
+        <div class="step-box">
+          <div class="step-num">4</div>
+          <div class="step-details">
+            <h4>Click "Detect Last Number" & Start</h4>
+            <p>
+              The assistant will automatically scan the visible table for the previous asset, pre-fill the next numbers,
+              and when you click <strong>Start Automation</strong>, it enters each item and saves sequentially!
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Alternative DevTools Console Method -->
+      <div class="console-box">
+        <div class="console-header">
+          <span>Alternative: Run via Browser Console (F12)</span>
+          <button id="copy-script-btn-2" class="btn-xs">Copy Script</button>
+        </div>
+        <p class="console-desc">
+          On MyClassboard page, press <kbd>F12</kbd> (or right-click &rarr; Inspect), open the <strong>Console</strong>
+          tab, paste the script, and press <kbd>Enter</kbd>.
+        </p>
+      </div>
+
+      <!-- GitHub Pages Hosting Instructions -->
+      <div class="github-guide">
+        <h4>🌐 Hosting this Web App on GitHub Pages (Free & Public)</h4>
+        <ol>
+          <li>Push this project directory to a new GitHub repository (e.g. <code>meridian-asset-assistant</code>).</li>
+          <li>In your repository, go to <strong>Settings</strong> &rarr; <strong>Pages</strong>.</li>
+          <li>Under <strong>Branch</strong>, select <code>main</code> (or <code>master</code>) and folder
+            <code>/ (root)</code>, then click <strong>Save</strong>.</li>
+          <li>In ~60 seconds, your site will be live at:
+            <code>https://&lt;your-username&gt;.github.io/&lt;repo-name&gt;/</code>! Anyone on the team can use it
+            immediately without installing anything.</li>
+        </ol>
+      </div>
+
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>Meridian School Fixed Asset Automator &bull; Madhapur Campus &bull; Built with Pure Web Standards (HTML5 /
+      Vanilla JS)</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
