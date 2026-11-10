@@ -63,43 +63,63 @@
     return false;
   }
 
-  // Helper to scan table and find last numbers
+  // Helper to scan table and find last numbers (with DataTables API + DOM support)
   function scanTableForLastNumbers(grade, section, typeCode) {
-    const rows = document.querySelectorAll('table tbody tr');
     let maxUnit = 0;
     let maxGlobalId = 0;
     let matchedItems = [];
-
-    // Pattern: MM/<grade><sec>-<unit>/FURN/<typeCode>/<globalId>
-    // Example: MM/3d-05/FURN/ST/477 or MM/3C-28/FURN/ST/472
     const targetRoomStr = `${grade}${section}`.toLowerCase();
 
-    rows.forEach((row) => {
-      const text = row.innerText || '';
-      // Look for MM/...
-      const matches = text.match(/MM\/([0-9A-Za-z]+)-(\d+)\/([A-Za-z]+)\/([A-Za-z]+)\/(\d+)/g);
-      if (matches) {
-        matches.forEach((itemStr) => {
-          const parts = itemStr.match(/MM\/([0-9A-Za-z]+)-(\d+)\/([A-Za-z]+)\/([A-Za-z]+)\/(\d+)/);
-          if (parts) {
-            const room = parts[1].toLowerCase();
-            const unit = parseInt(parts[2], 10);
-            const cat = parts[3];
-            const type = parts[4].toUpperCase();
-            const globalId = parseInt(parts[5], 10);
+    function processItemStr(itemStr) {
+      const parts = itemStr.match(/MM\/([0-9A-Za-z]+)-(\d+)\/([A-Za-z]+)\/([A-Za-z]+)\/(\d+)/);
+      if (parts) {
+        const room = parts[1].toLowerCase();
+        const unit = parseInt(parts[2], 10);
+        const cat = parts[3];
+        const type = parts[4].toUpperCase();
+        const globalId = parseInt(parts[5], 10);
 
-            if (globalId > maxGlobalId) {
-              maxGlobalId = globalId;
-            }
+        if (globalId > maxGlobalId) {
+          maxGlobalId = globalId;
+        }
 
-            if (room === targetRoomStr && (!typeCode || type === typeCode.toUpperCase())) {
-              matchedItems.push({ itemStr, unit, globalId });
-              if (unit > maxUnit) {
-                maxUnit = unit;
+        if (room === targetRoomStr && (!typeCode || type === typeCode.toUpperCase())) {
+          matchedItems.push({ itemStr, unit, globalId });
+          if (unit > maxUnit) {
+            maxUnit = unit;
+          }
+        }
+      }
+    }
+
+    // 1. Try DataTables API first (gets all pages and filtered records)
+    if (window.jQuery && window.jQuery.fn && window.jQuery.fn.dataTable) {
+      try {
+        window.jQuery('table').each(function () {
+          if (window.jQuery.fn.DataTable.isDataTable(this)) {
+            const dt = window.jQuery(this).DataTable();
+            const allData = dt.data();
+            for (let i = 0; i < allData.length; i++) {
+              const rowStr = JSON.stringify(allData[i]);
+              const matches = rowStr.match(/MM\/([0-9A-Za-z]+)-(\d+)\/([A-Za-z]+)\/([A-Za-z]+)\/(\d+)/g);
+              if (matches) {
+                matches.forEach(processItemStr);
               }
             }
           }
         });
+      } catch (err) {
+        console.warn('DataTables API scan error, falling back to DOM scan:', err);
+      }
+    }
+
+    // 2. Scan visible DOM table rows as well
+    const rows = document.querySelectorAll('table tbody tr');
+    rows.forEach((row) => {
+      const text = row.innerText || '';
+      const matches = text.match(/MM\/([0-9A-Za-z]+)-(\d+)\/([A-Za-z]+)\/([A-Za-z]+)\/(\d+)/g);
+      if (matches) {
+        matches.forEach(processItemStr);
       }
     });
 
@@ -194,8 +214,9 @@
       </div>
 
       <div class="mcb-actions">
-        <button id="mcb-start-btn" class="mcb-btn-primary">🚀 Start Automation</button>
-        <button id="mcb-stop-btn" class="mcb-btn-danger" style="display:none;">⏹ Stop</button>
+        <button id="mcb-test-btn" class="mcb-btn-secondary" style="flex:1; padding:9px 10px;" title="Fills 1 modal without saving so you can visually verify">🧪 Test 1 Item (Dry Run)</button>
+        <button id="mcb-start-btn" class="mcb-btn-primary" style="flex:1.2;">🚀 Start Automation</button>
+        <button id="mcb-stop-btn" class="mcb-btn-danger" style="display:none; flex:1;">⏹ Stop</button>
       </div>
 
       <div class="mcb-log-window" id="mcb-log-window">
@@ -540,25 +561,263 @@
     updatePreview();
   });
 
-  // Helper to find input by associated label text or placeholder or id
-  function findFieldByLabel(modal, labelSubstring) {
-    const labels = modal.querySelectorAll('label, th, td, span');
+  // Helper to wait until a select element has populated options
+  async function waitForOptions(selectEl, timeoutMs = 3000) {
+    if (!selectEl) return false;
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (selectEl.options && selectEl.options.length > 1) {
+        return true;
+      }
+      await sleep(150);
+    }
+    return false;
+  }
+
+  // Enhanced helper to find inputs in MyClassboard modals using multiple strategies
+  function findFieldByMultipleStrategies(modal, labelText, altSelectors = []) {
+    // 1. Try explicit ID/name/class selectors first
+    for (const sel of altSelectors) {
+      try {
+        const el = modal.querySelector(sel);
+        if (el) return el;
+      } catch (e) {}
+    }
+
+    // 2. Try looking for input by placeholder or name containing the label
+    const sanitized = labelText.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const allInputs = modal.querySelectorAll('input, select, textarea');
+    for (const inp of allInputs) {
+      const name = (inp.name || '').toLowerCase();
+      const id = (inp.id || '').toLowerCase();
+      const placeholder = (inp.placeholder || '').toLowerCase();
+      if (name.includes(sanitized) || id.includes(sanitized) || placeholder.includes(sanitized)) {
+        return inp;
+      }
+    }
+
+    // 3. Match by surrounding label text
+    const labels = modal.querySelectorAll('label, div, span, td, th');
     for (const lbl of labels) {
-      if (lbl.textContent.toLowerCase().includes(labelSubstring.toLowerCase())) {
-        // Check next sibling, parent next sibling, or for attribute
+      const txt = lbl.textContent.trim().toLowerCase();
+      if (txt.includes(labelText.toLowerCase()) && txt.length < 50) {
         if (lbl.htmlFor) {
-          const el = modal.querySelector(`#${lbl.htmlFor}`);
-          if (el) return el;
+          const target = modal.querySelector(`#${lbl.htmlFor}`) || document.getElementById(lbl.htmlFor);
+          if (target) return target;
         }
         let parent = lbl.parentElement;
         for (let depth = 0; depth < 3 && parent; depth++) {
-          const input = parent.querySelector('input, select, textarea');
-          if (input && input !== lbl) return input;
+          const direct = parent.querySelector('input, select, textarea');
+          if (direct && direct !== lbl) return direct;
           parent = parent.parentElement;
         }
       }
     }
     return null;
+  }
+
+  // Alias for backward compatibility
+  const findFieldByLabel = findFieldByMultipleStrategies;
+
+  // Reusable core function to open modal, fill all fields, and optionally save
+  async function executeSingleItemFlow(itemName, tagNo, mcbItemTypeText, autoSave = true) {
+    // Step 1: Click "+ Add Item" button
+    let addBtn = null;
+    const allButtons = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
+    for (const btn of allButtons) {
+      if (btn.textContent.includes('Add Item') || (btn.value && btn.value.includes('Add Item'))) {
+        addBtn = btn;
+        break;
+      }
+    }
+
+    if (!addBtn) {
+      throw new Error('Could not find "+ Add Item" button on page.');
+    }
+
+    addBtn.click();
+    await sleep(1200);
+
+    // Step 2: Locate Modal Dialog
+    let modal = document.querySelector('.modal.show, .modal.in, div[role="dialog"], #myModal, #fixedAssetModal');
+    if (!modal) {
+      const allDivs = document.querySelectorAll('div');
+      for (const d of allDivs) {
+        if (d.textContent.includes('Create/Edit Fixed Asset Items') && d.offsetHeight > 100) {
+          modal = d;
+          break;
+        }
+      }
+    }
+
+    if (!modal) {
+      throw new Error('Modal dialog "Create/Edit Fixed Asset Items" did not open.');
+    }
+
+    // Step 3: Fill Fields in Modal
+    // 3a. Category: ASSETS-MADHAPUR
+    const catSelect = findFieldByLabel(modal, 'Category') || modal.querySelector('select');
+    if (catSelect) {
+      selectOptionByText(catSelect, 'MADHAPUR');
+    }
+    await sleep(500);
+
+    // 3b. Sub Category: FURNITURES (Wait for AJAX options)
+    const subCatSelect = findFieldByLabel(modal, 'Sub Category');
+    if (subCatSelect) {
+      await waitForOptions(subCatSelect, 3000);
+      selectOptionByText(subCatSelect, 'FURNITURE');
+    }
+    await sleep(500);
+
+    // 3c. Item Type: e.g. STUDENT TABLES (Wait for AJAX options)
+    const itemTypeField = findFieldByLabel(modal, 'Item Type');
+    if (itemTypeField && itemTypeField.tagName === 'SELECT') {
+      await waitForOptions(itemTypeField, 3000);
+      selectOptionByText(itemTypeField, mcbItemTypeText);
+    }
+    await sleep(400);
+
+    // 3d. Item Name: MM/3d-06/FURN/ST/478
+    const itemNameField = findFieldByLabel(modal, 'Item Name') || modal.querySelector('input[placeholder*="Item Name"], input[name*="ItemName"]');
+    if (itemNameField) {
+      setNativeValue(itemNameField, itemName);
+    } else {
+      throw new Error('Item Name field not found in modal.');
+    }
+
+    // 3e. UOM: Nos
+    const uomField = findFieldByLabel(modal, 'UOM');
+    if (uomField && uomField.tagName === 'SELECT') {
+      selectOptionByText(uomField, 'Nos');
+    }
+
+    // 3f. Classification: General
+    const classField = findFieldByLabel(modal, 'Classification');
+    if (classField && classField.tagName === 'SELECT') {
+      selectOptionByText(classField, 'General');
+    }
+
+    // 3g. GST %: 0
+    const gstField = findFieldByLabel(modal, 'GST');
+    if (gstField && gstField.tagName === 'SELECT') {
+      selectOptionByText(gstField, '0');
+    }
+
+    // 3h. Item Description: same as Item Name
+    const descField = findFieldByLabel(modal, 'Item Description') || modal.querySelector('textarea');
+    if (descField) {
+      setNativeValue(descField, itemName);
+    }
+
+    // 3i. Radios: Is Returnable: No, Warranty: No, Service: No
+    const radioLabels = modal.querySelectorAll('label');
+    radioLabels.forEach((lbl) => {
+      if (lbl.textContent.trim().toLowerCase() === 'no') {
+        const radio = lbl.querySelector('input[type="radio"]') || document.getElementById(lbl.htmlFor);
+        if (radio) {
+          radio.checked = true;
+          radio.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+    });
+
+    // 3j. Asset Tag Name: MM/3d-06/FURN/ST/478
+    const tagField = findFieldByLabel(modal, 'Asset Tag Name');
+    if (tagField) {
+      setNativeValue(tagField, itemName);
+    }
+
+    // 3k. Asset Tag No: MM/MM-478
+    const tagNoField = findFieldByLabel(modal, 'Asset Tag No');
+    if (tagNoField) {
+      setNativeValue(tagNoField, tagNo);
+    }
+
+    // 3l. Depreciation Method: Straight Line Depreciation Method
+    const depMethodField = findFieldByLabel(modal, 'Depreciation Method');
+    if (depMethodField && depMethodField.tagName === 'SELECT') {
+      selectOptionByText(depMethodField, 'Straight Line');
+    }
+
+    // 3m. Depreciation Rate: 1
+    const depRateField = findFieldByLabel(modal, 'Depreciation Rate');
+    if (depRateField) {
+      setNativeValue(depRateField, '1');
+    }
+
+    await sleep(400);
+
+    // If dry run, leave form open for inspection
+    if (!autoSave) {
+      appendLog(`Dry Run Complete! Inspect the opened modal to verify all fields for ${itemName}.`, '#34d399');
+      alert(`Dry Run Complete!\n\nAll fields for ${itemName} have been populated in the modal.\nPlease check the form on screen to verify all fields are filled accurately.`);
+      return true;
+    }
+
+    // Step 4: Click Save
+    const saveBtns = Array.from(modal.querySelectorAll('button, input[type="submit"]'));
+    const saveBtn = saveBtns.find((b) => b.textContent.trim().toLowerCase() === 'save');
+    if (!saveBtn) {
+      throw new Error('Save button not found in modal.');
+    }
+
+    saveBtn.click();
+    appendLog(`Saved ${itemName}. Waiting for confirmation...`, '#a7f3d0');
+    await sleep(1500);
+
+    // Step 5: Check for Success Popup & Click OK
+    let okClicked = false;
+    const popups = document.querySelectorAll('.swal2-container, .modal, div[role="dialog"], .bootbox');
+    for (const popup of popups) {
+      if (popup.textContent.includes('saved successfully') || popup.textContent.includes('successfully') || popup.textContent.includes('Success')) {
+        const okBtn = Array.from(popup.querySelectorAll('button')).find((b) =>
+          b.textContent.trim().toLowerCase().includes('ok')
+        );
+        if (okBtn) {
+          okBtn.click();
+          okClicked = true;
+          break;
+        }
+      }
+    }
+
+    if (!okClicked) {
+      const anyOk = Array.from(document.querySelectorAll('button')).find(
+        (b) => b.textContent.trim().toLowerCase() === 'ok' && b.offsetParent !== null
+      );
+      if (anyOk) {
+        anyOk.click();
+      }
+    }
+
+    return true;
+  }
+
+  // Dry Run Single Test Handler
+  const testBtn = document.getElementById('mcb-test-btn');
+  if (testBtn) {
+    testBtn.addEventListener('click', async () => {
+      const grade = gradeInput.value.trim() || '3';
+      const sec = (sectionInput.value.trim() || 'D').toLowerCase();
+      const typeCode = itemTypeSelect.value;
+      const selectedOption = itemTypeSelect.options[itemTypeSelect.selectedIndex];
+      const mcbItemTypeText = selectedOption.getAttribute('data-mcb') || 'STUDENT TABLES';
+
+      const startUnit = parseInt(startUnitInput.value, 10) || 1;
+      const currentGlobalId = parseInt(startGlobalIdInput.value, 10) || 1;
+      const unitFormatted = startUnit < 10 ? `0${startUnit}` : `${startUnit}`;
+      const itemName = `MM/${grade}${sec}-${unitFormatted}/FURN/${typeCode}/${currentGlobalId}`;
+      const tagNo = `MM/MM-${currentGlobalId}`;
+
+      appendLog(`Running dry run test for 1 item: ${itemName}... (Will NOT save)`, '#fbbf24');
+      try {
+        await executeSingleItemFlow(itemName, tagNo, mcbItemTypeText, false);
+      } catch (err) {
+        appendLog(`Dry run error: ${err.message}`, '#f87171');
+        alert(`Dry run failed: ${err.message}\n\nPlease check that you are on the Inventory > Fixed Asset Items page.`);
+      }
+    });
   }
 
   // Automation Loop
@@ -590,6 +849,7 @@
 
     isRunning = true;
     startBtn.style.display = 'none';
+    if (testBtn) testBtn.style.display = 'none';
     stopBtn.style.display = 'block';
     progressContainer.style.display = 'block';
     appendLog(`Starting creation of ${totalItems} items...`, '#60a5fa');
@@ -609,169 +869,7 @@
       appendLog(`[${completed + 1}/${totalItems}] Creating: ${itemName}...`, '#93c5fd');
 
       try {
-        // Step 1: Click "+ Add Item" button
-        let addBtn = null;
-        const allButtons = Array.from(document.querySelectorAll('button, a, input[type="button"]'));
-        for (const btn of allButtons) {
-          if (btn.textContent.includes('Add Item') || (btn.value && btn.value.includes('Add Item'))) {
-            addBtn = btn;
-            break;
-          }
-        }
-
-        if (!addBtn) {
-          throw new Error('Could not find "+ Add Item" button on page.');
-        }
-
-        addBtn.click();
-        await sleep(1200);
-
-        // Step 2: Locate Modal Dialog
-        let modal = document.querySelector('.modal.show, .modal.in, div[role="dialog"], #myModal, #fixedAssetModal');
-        if (!modal) {
-          // Fallback: search for any div containing "Create/Edit Fixed Asset Items"
-          const allDivs = document.querySelectorAll('div');
-          for (const d of allDivs) {
-            if (d.textContent.includes('Create/Edit Fixed Asset Items') && d.offsetHeight > 100) {
-              modal = d;
-              break;
-            }
-          }
-        }
-
-        if (!modal) {
-          throw new Error('Modal dialog "Create/Edit Fixed Asset Items" did not open.');
-        }
-
-        // Step 3: Fill Fields in Modal
-        // 3a. Category: ASSETS-MADHAPUR
-        const catSelect = findFieldByLabel(modal, 'Category') || modal.querySelector('select');
-        if (catSelect) {
-          selectOptionByText(catSelect, 'MADHAPUR');
-        }
-        await sleep(500);
-
-        // 3b. Sub Category: FURNITURES
-        const subCatSelect = findFieldByLabel(modal, 'Sub Category');
-        if (subCatSelect) {
-          selectOptionByText(subCatSelect, 'FURNITURE');
-        }
-        await sleep(500);
-
-        // 3c. Item Type: e.g. STUDENT TABLES / STUDENT CHAIRS
-        const itemTypeField = findFieldByLabel(modal, 'Item Type');
-        if (itemTypeField && itemTypeField.tagName === 'SELECT') {
-          selectOptionByText(itemTypeField, mcbItemTypeText);
-        }
-        await sleep(400);
-
-        // 3d. Item Name: MM/3d-06/FURN/ST/478
-        const itemNameField = findFieldByLabel(modal, 'Item Name') || modal.querySelector('input[placeholder*="Item Name"], input[name*="ItemName"]');
-        if (itemNameField) {
-          setNativeValue(itemNameField, itemName);
-        } else {
-          throw new Error('Item Name field not found in modal.');
-        }
-
-        // 3e. UOM: Nos
-        const uomField = findFieldByLabel(modal, 'UOM');
-        if (uomField && uomField.tagName === 'SELECT') {
-          selectOptionByText(uomField, 'Nos');
-        }
-
-        // 3f. Classification: General
-        const classField = findFieldByLabel(modal, 'Classification');
-        if (classField && classField.tagName === 'SELECT') {
-          selectOptionByText(classField, 'General');
-        }
-
-        // 3g. GST %: 0
-        const gstField = findFieldByLabel(modal, 'GST');
-        if (gstField && gstField.tagName === 'SELECT') {
-          selectOptionByText(gstField, '0');
-        }
-
-        // 3h. Item Description: same as Item Name
-        const descField = findFieldByLabel(modal, 'Item Description') || modal.querySelector('textarea');
-        if (descField) {
-          setNativeValue(descField, itemName);
-        }
-
-        // 3i. Radios: Is Returnable: No, Warranty available: No, Service needed: No
-        const radioLabels = modal.querySelectorAll('label');
-        radioLabels.forEach((lbl) => {
-          if (lbl.textContent.trim().toLowerCase() === 'no') {
-            const radio = lbl.querySelector('input[type="radio"]') || document.getElementById(lbl.htmlFor);
-            if (radio) {
-              radio.checked = true;
-              radio.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-          }
-        });
-
-        // 3j. Asset Tag Name: MM/3d-06/FURN/ST/478
-        const tagField = findFieldByLabel(modal, 'Asset Tag Name');
-        if (tagField) {
-          setNativeValue(tagField, itemName);
-        }
-
-        // 3k. Asset Tag No: MM/MM-478
-        const tagNoField = findFieldByLabel(modal, 'Asset Tag No');
-        if (tagNoField) {
-          setNativeValue(tagNoField, tagNo);
-        }
-
-        // 3l. Depreciation Method: Straight Line Depreciation Method
-        const depMethodField = findFieldByLabel(modal, 'Depreciation Method');
-        if (depMethodField && depMethodField.tagName === 'SELECT') {
-          selectOptionByText(depMethodField, 'Straight Line');
-        }
-
-        // 3m. Depreciation Rate: 1
-        const depRateField = findFieldByLabel(modal, 'Depreciation Rate');
-        if (depRateField) {
-          setNativeValue(depRateField, '1');
-        }
-
-        await sleep(500);
-
-        // Step 4: Click Save
-        const saveBtns = Array.from(modal.querySelectorAll('button, input[type="submit"]'));
-        const saveBtn = saveBtns.find((b) => b.textContent.trim().toLowerCase() === 'save');
-        if (!saveBtn) {
-          throw new Error('Save button not found in modal.');
-        }
-
-        saveBtn.click();
-        appendLog(`Saved ${itemName}. Waiting for confirmation...`, '#a7f3d0');
-        await sleep(1500);
-
-        // Step 5: Check for Success Popup & Click OK
-        // Usually SweetAlert or standard alert dialog
-        let okClicked = false;
-        const popups = document.querySelectorAll('.swal2-container, .modal, div[role="dialog"], .bootbox');
-        for (const popup of popups) {
-          if (popup.textContent.includes('saved successfully') || popup.textContent.includes('successfully') || popup.textContent.includes('Success')) {
-            const okBtn = Array.from(popup.querySelectorAll('button')).find((b) =>
-              b.textContent.trim().toLowerCase().includes('ok')
-            );
-            if (okBtn) {
-              okBtn.click();
-              okClicked = true;
-              break;
-            }
-          }
-        }
-
-        if (!okClicked) {
-          // Check for any visible OK button
-          const anyOk = Array.from(document.querySelectorAll('button')).find(
-            (b) => b.textContent.trim().toLowerCase() === 'ok' && b.offsetParent !== null
-          );
-          if (anyOk) {
-            anyOk.click();
-          }
-        }
+        await executeSingleItemFlow(itemName, tagNo, mcbItemTypeText, true);
 
         completed++;
         currentGlobalId++;
@@ -793,6 +891,7 @@
 
     isRunning = false;
     startBtn.style.display = 'block';
+    if (testBtn) testBtn.style.display = 'block';
     stopBtn.style.display = 'none';
     appendLog(`Automation finished! Total items created: ${completed}`, '#60a5fa');
     alert(`Automation finished!\nSuccessfully created ${completed} items for Grade ${grade}${sec.toUpperCase()}.`);

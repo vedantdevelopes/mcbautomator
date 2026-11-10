@@ -23,3 +23,4 @@ document.getElementById('launch-btn').addEventListener('click', async () => {
     setTimeout(() => window.close(), 1200);
   });
 });
+
